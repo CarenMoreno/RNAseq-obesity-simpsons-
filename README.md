@@ -6,7 +6,7 @@ RNA-seq pipeline sobre el análisis de expresión diferencial de genes relaciona
 
 ## 👥 Grupo 4
 - Caren Moreno
-- Analia Patrana  
+- Analia Pastrana  
 - Angel Emanuel Guerrero
 
 ## 📋 Descripción
