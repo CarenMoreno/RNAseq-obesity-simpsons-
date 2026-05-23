@@ -24,7 +24,7 @@ FastQC → STAR/HISAT2 → featureCounts/Salmon → DESeq2/edgeR → Visualizaci
 ## 🗂️ Estructura del repositorio
 [Agregar Describición detalladamente en una tabla o lista de carpetas]
 
-## ▶️ Cómo reproducir el análisis
+## Cómo reproducir el análisis
 [Agregar descripción de pasos ordenados]
 
 ## 🔗 Poster
