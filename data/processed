@@ -1,1 +1,31 @@
+```{r metadata}
 
+metadata <- data.frame(
+  Sample = c(
+    "MargeSimpson",
+    "PattyBouvier",
+    "SelmaBouvier",
+    "BartSimpson",
+    "LisaSimpson",
+    "MaggieSimpson"
+  ),
+
+  condition = c(
+    "Obeso2",
+    "Obeso2",
+    "Obeso2",
+    "Normopeso",
+    "Normopeso",
+    "Normopeso"
+  )
+)
+
+rownames(metadata) <- metadata$Sample
+
+metadata$condition <- factor(
+  metadata$condition,
+  levels = c("Normopeso", "Obeso2")
+)
+
+metadata
+```
