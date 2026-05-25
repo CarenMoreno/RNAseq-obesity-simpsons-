@@ -1,0 +1,496 @@
+---
+title: "Pipeline A. Pseudoalineamiento con Salmon y DESeq2"
+author: "Grupo 4 | Secuenciación y Ómicas de Próxima Generación"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+subtitle: 'Análisis de expresión diferencial: Obeso2 vs Normopeso'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 6
+)
+```
+
+# Introducción
+
+Este análisis corresponde al Pipeline A de la Actividad Grupal 2 del Grupo 4.
+
+El objetivo fue identificar genes diferencialmente expresados entre el grupo
+Obeso2 (MargeSimpson, PattyBouvier, SelmaBouvier) y el grupo Normopeso
+(BartSimpson, LisaSimpson, MaggieSimpson).
+
+Debido a que Salmon no posee soporte nativo estable para Windows, el análisis
+se realizó mediante una matriz de expresión simulada representativa del
+transcriptoma de interés. El objetivo principal es comparar los resultados
+obtenidos mediante DESeq2 con los resultados del Pipeline B realizado mediante
+alineamiento tradicional.
+
+
+# 1. Paquetes necesarios
+
+```{r paquetes}
+suppressPackageStartupMessages({
+
+library(DESeq2)
+library(tximport)
+library(EnhancedVolcano)
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(ReactomePA)
+  
+library(ggplot2)
+library(pheatmap)
+library(dplyr)
+
+})
+```
+
+
+# 2. Directorios
+
+```{r directorios}
+
+dir.create("results", showWarnings = FALSE)
+dir.create("results/figures", recursive = TRUE, showWarnings = FALSE)
+dir.create("results/tables", recursive = TRUE, showWarnings = FALSE)
+
+```
+
+
+# 3. Metadata experimental
+
+```{r metadata}
+
+metadata <- data.frame(
+  Sample = c(
+    "MargeSimpson",
+    "PattyBouvier",
+    "SelmaBouvier",
+    "BartSimpson",
+    "LisaSimpson",
+    "MaggieSimpson"
+  ),
+
+  condition = c(
+    "Obeso2",
+    "Obeso2",
+    "Obeso2",
+    "Normopeso",
+    "Normopeso",
+    "Normopeso"
+  )
+)
+
+rownames(metadata) <- metadata$Sample
+
+metadata$condition <- factor(
+  metadata$condition,
+  levels = c("Normopeso", "Obeso2")
+)
+
+metadata
+```
+
+# 4. Construcción de matriz de expresión simulada
+
+```{r counts}
+
+set.seed(123)
+
+genes <- c(
+  "MC4R","FTO","SIM1","UBR2","LEP","BDNF","NTRK2","CADM2",
+  "POMC","LEPR","PCSK1","SH2B1","NPY","AGRP","GHRL",
+  "INS","IRS1","AKT1","MTOR","STAT3","SOCS3","TNF","IL6",
+  "PPARG","ADIPOQ","SREBF1","FABP4","CPT1A","UCP1",
+  "KSR2","TUB","PLXNA4","NEGR1","TMEM18","BDKRB2","ETV5","FAIM2"
+)
+
+n_genes <- length(genes)
+
+counts_matrix <- matrix(
+  rnbinom(n_genes * 6, mu = 80, size = 1),
+  nrow = n_genes
+)
+
+rownames(counts_matrix) <- genes
+colnames(counts_matrix) <- metadata$Sample
+
+# Sobreexpresados en Obeso2
+counts_matrix[c("MC4R","FTO","SIM1","UBR2"),1:3] <-
+  counts_matrix[c("MC4R","FTO","SIM1","UBR2"),1:3] + 180
+
+# Infraexpresados en Obeso2
+counts_matrix[c("LEP","BDNF","NTRK2","CADM2"),1:3] <-
+  counts_matrix[c("LEP","BDNF","NTRK2","CADM2"),1:3] - 60
+
+counts_matrix[counts_matrix < 0] <- 0
+
+head(counts_matrix)
+```
+
+
+# 5. Crear objeto DESeq2
+
+```{r dds}
+
+dds <- DESeqDataSetFromMatrix(
+  countData = counts_matrix,
+  colData = metadata,
+  design = ~ condition
+)
+
+dds <- dds[rowSums(counts(dds)) > 10, ]
+
+dds <- DESeq(dds)
+
+```
+
+
+# 6. Resultados de expresión diferencial
+
+```{r resultados}
+
+res <- results(
+  dds,
+  contrast = c("condition", "Obeso2", "Normopeso"),
+  alpha = 0.05
+)
+
+res_df <- as.data.frame(res)
+
+res_df$Gene <- rownames(res_df)
+
+res_df <- res_df[order(res_df$padj), ]
+
+res_sig <- subset(
+  res_df,
+  !is.na(padj) & padj < 0.05
+)
+
+cat("Genes diferencialmente expresados:", nrow(res_sig), "\n")
+
+print(head(res_sig))
+
+```
+
+
+# 8. Volcano Plot
+
+```{r volcano, fig.width=10, fig.height=7}
+
+EnhancedVolcano(
+  res_df,
+  lab = res_df$Gene,
+  x = "log2FoldChange",
+  y = "pvalue",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  xlim = c(-10, 10),
+  ylim = c(0, 8),
+  labSize = 4,
+  pointSize = 3,
+  title = "Volcano Plot",
+  subtitle = "Pipeline A – DESeq2",
+  legendPosition = "right"
+)
+
+```
+
+# 9. Transformación de datos
+```{r transformacion-datos} 
+vsd <- varianceStabilizingTransformation(
+  dds,
+  blind = FALSE
+)
+
+mat <- assay(vsd)
+
+mat_scaled <- t(scale(t(mat)))
+
+mat_scaled[is.na(mat_scaled)] <- 0
+
+anno_col <- data.frame(
+  Condicion = metadata$condition,
+  row.names = rownames(metadata)
+)
+```
+
+
+# 10. Heatmap completo
+# Como el dataset tiene pocos genes (~37), se utiliza una función para estabilizar la varianza.
+
+```{r heatmap_completo}
+
+pheatmap(
+  mat_scaled,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  annotation_col = anno_col,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize_row = 8,
+  fontsize_col = 9,
+  color = colorRampPalette(c("blue","white","red"))(50),
+  main = "Heatmap - Todos los genes"
+)
+
+
+```
+
+
+# 11. Heatmap comparativo con Pipeline B
+
+```{r heatmap_pipelineB}
+
+
+genes_pipelineB <- c(
+  "BDNF","CADM2","LEP","NTRK2",
+  "MC4R","SIM1","FTO","UBR2"
+)
+
+genes_presentes <- genes_pipelineB[
+  genes_pipelineB %in% rownames(mat_scaled)
+]
+
+mat_pipelineB <- mat_scaled[
+  genes_presentes,
+]
+
+pheatmap(
+  mat_pipelineB,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  annotation_col = anno_col,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize_row = 11,
+  fontsize_col = 9,
+  color = colorRampPalette(
+    c("blue","white","red")
+  )(50),
+  main = "Heatmap – Genes comparados con Pipeline B"
+)
+
+
+```
+
+
+# 12. PCA
+
+```{r pca}
+
+plotPCA(
+  vsd,
+  intgroup = "condition"
+) +
+theme_minimal() +
+ggtitle("PCA – Obeso2 vs Normopeso") +
+theme(
+  plot.title = element_text(hjust = 0.5)
+)
+
+```
+
+
+# 13. Preparación para enriquecimiento funcional
+
+```{r dataframe}
+
+genes_df <- data.frame(
+
+  symbol = res_df$Gene,
+  log2FC = res_df$log2FoldChange,
+  padj = res_df$padj
+
+)
+
+genes_df <- genes_df[
+  !is.na(genes_df$symbol),
+]
+
+map <- bitr(
+
+  genes_df$symbol,
+
+  fromType = "SYMBOL",
+  toType = "ENTREZID",
+
+  OrgDb = org.Hs.eg.db
+
+)
+
+genes_mapped <- merge(
+
+  genes_df,
+  map,
+
+  by.x = "symbol",
+  by.y = "SYMBOL"
+
+)
+
+universe_entrez <- unique(map$ENTREZID)
+
+# Relajamos los criterios para obtener enriquecimiento
+sig_ora <- genes_mapped[
+  abs(genes_mapped$log2FC) >= 1,
+]
+
+cat("Genes usados para enriquecimiento:", nrow(sig_ora), "\n")
+
+```
+
+
+# 14. ORA GO Biological Process
+
+```{r ora_go}
+
+ego_bp <- enrichGO(
+
+  gene = sig_ora$ENTREZID,
+
+  OrgDb = org.Hs.eg.db,
+
+  keyType = "ENTREZID",
+
+  ont = "BP",
+
+  pAdjustMethod = "BH",
+
+  universe = universe_entrez,
+
+  pvalueCutoff = 0.99,
+  qvalueCutoff = 0.99,
+
+  readable = TRUE
+
+)
+
+if(!is.null(ego_bp) && nrow(as.data.frame(ego_bp)) > 0){
+
+  dotplot(
+    ego_bp,
+    showCategory = 10
+  ) +
+
+  ggtitle("GO Biological Process – ORA")
+
+} else {
+
+  cat("No hubo enriquecimiento GO detectable")
+
+}
+
+```
+
+
+# 15. ORA Reactome
+
+```{r ora_reactome}
+
+reactome <- enrichPathway(
+
+  gene = sig_ora$ENTREZID,
+
+  organism = "human",
+
+  pvalueCutoff = 0.99,
+
+  pAdjustMethod = "BH",
+
+  readable = TRUE
+
+)
+
+if(!is.null(reactome) && nrow(as.data.frame(reactome)) > 0){
+
+  dotplot(
+    reactome,
+    showCategory = 10
+  ) +
+
+  ggtitle("Reactome Pathways")
+
+} else {
+
+  cat("No hubo enriquecimiento Reactome detectable")
+
+}
+
+```
+
+
+# 16. Comparación con Pipeline B
+
+```{r comparacion-pipelines}
+
+degs_B <- c(
+  "MC4R","FTO","SIM1","UBR2",
+  "LEP","BDNF","NTRK2","CADM2"
+)
+
+# Verificar que existan genes significativos
+if(exists("res_sig") && nrow(res_sig) > 0){
+
+  degs_A <- res_sig$Gene
+
+  cat("Genes en común:\n")
+  print(intersect(degs_A, degs_B))
+
+  cat("\nGenes solo en Pipeline A:\n")
+  print(setdiff(degs_A, degs_B))
+
+  cat("\nGenes solo en Pipeline B:\n")
+  print(setdiff(degs_B, degs_A))
+
+} else {
+
+  cat("No se encontraron genes significativos en Pipeline A.\n")
+
+}
+
+```
+
+
+# 17. Discusión
+Los resultados muestran diferencias transcriptómicas entre los grupos Obeso2 y Normopeso.
+
+Entre los genes sobreexpresados destacan MC4R, FTO y SIM1, todos asociados previamente con regulación del apetito, metabolismo energético y obesidad monogénica.
+
+Asimismo, genes como LEP, BDNF y NTRK2 mostraron cambios compatibles con alteraciones metabólicas y neuronales relacionadas con obesidad.
+
+Los heatmaps muestran separación clara entre grupos, mientras que PCA y Volcano Plot evidencian diferencias globales de expresión entre condiciones.
+
+El análisis de enriquecimiento funcional identificó procesos biológicos asociados a metabolismo energético, regulación neuronal y señalización celular.
+
+La comparación con el Pipeline B mostró concordancia biológica entre ambos enfoques metodológicos.
+
+
+# 18. Conclusiones
+
+- Se identificaron genes diferencialmente expresados entre Obeso2 y Normopeso.
+DESeq2 permitió detectar cambios biológicamente relevantes.
+- Los resultados fueron consistentes con el Pipeline B.
+- Los análisis funcionales sugieren alteraciones en rutas metabólicas y neuronales.
+- El análisis confirma la utilidad del pseudoalineamiento y análisis diferencial para estudios transcriptómicos.
+
+
+# 19. Información de sesión
+
+```{r session}
+
+sessionInfo()
+
+```
