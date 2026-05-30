@@ -90,4 +90,4 @@ RNAseq-obesity-simpsons/
 [Agregar descripción de pasos ordenados]
 
 ## 🔗 Poster
-[Agregar imagen del poster]
+![Poster](poster/poster.ppt)
