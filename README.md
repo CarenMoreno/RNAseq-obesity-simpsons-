@@ -15,7 +15,7 @@ utilizando datos simulados de RNA-seq basados en personajes de Los Simpson.
 Se comparan perfiles metabólicos: Obeso1, Obeso2 y Normopeso.
 
 ## 🔧 Pipeline
-FastQC → STAR/HISAT2 → featureCounts/Salmon → DESeq2/edgeR → Visualización
+FastQC → STAR/HISAT2 → featureCounts/Salmon → DESeq2 → Visualización
 
 ## 📊 Resultados principales
 ![Volcano Plot](results/figures/volcano_plot.png)
